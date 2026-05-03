@@ -476,7 +476,7 @@ public class UserService {
 
     public boolean unbanUserById(AuthenticatedUser principal, Long userId) {
         User target = userRepository.findByIdWithRoles(userId).orElseThrow(() -> new RuntimeException("Target user not found"));
-        boolean canModify = canModifyUser(principal, target);
+        boolean canModify = (isSuperAdmin(principal) || isAdmin(principal)) && (principal.getUserId() != null && !principal.getUserId().equals(userId));
         if (canModify) {
             User actor = userRepository.findByIdWithRoles(principal.getUserId()).orElseThrow(() -> new RuntimeException("User not found"));
             UserBanLog userBanLog = new UserBanLog();
@@ -493,64 +493,53 @@ public class UserService {
     }
 
     public boolean changeUserRoles(AuthenticatedUser principal, Long userId, ChangeRolesRequest changeRolesRequest) {
-        List<String> roles = changeRolesRequest.getRoles();
-        if (roles != null) {
-            if (!roles.isEmpty()) {
+        List<String> requestedRoles = changeRolesRequest.getRoles();
 
-                String roleString = roles.getFirst();
-                Optional<Role> roleOptional = roleRepository.findByName(roleString);
-                if (roleOptional.isPresent()) {
-                    User target = userRepository.findByIdWithRoles(userId).orElseThrow(() -> new RuntimeException("Target user not found"));
-
-                    if (isAdmin(principal) || isSuperAdmin(principal)) {
-
-                        Role targetsRole = target.getRoles().iterator().next();
-
-                        Role role = roleOptional.get();
-                        if (targetsRole.getName().equalsIgnoreCase(role.getName())) {
-                            return true;
-                        } else if (role.getName().equalsIgnoreCase(ROLE_USER_STRING)) {
-                             if (isAdmin(target)) {
-                                if (isSuperAdmin(principal) ||
-                                        Objects.equals(principal.getUserId(), target.getId())) {
-                                    changeRole(target, ROLE_USER_STRING);
-                                    return true;
-                                } else {
-                                    return false;
-                                }
-                            } else {
-                                return false;
-                            }
-                        } else if (role.getName().equalsIgnoreCase(ROLE_ADMIN_STRING)) {
-                            if (isUser(target) ||
-                                    Objects.equals(principal.getUserId(), target.getId())) {
-                                changeRole(target, ROLE_ADMIN_STRING);
-                                return true;
-                            } else {
-                                return false;
-                            }
-                        } else if (role.getName().equalsIgnoreCase(ROLE_SUPER_ADMIN_STRING)) {
-                            if (isSuperAdmin(principal)) {
-                                changeRole(target, ROLE_SUPER_ADMIN_STRING);
-                                return true;
-                            } else {
-                                return false;
-                            }
-                        } else {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                } else {
-                    return false;
-                }
-            } else {
-                return false;
-            }
-        } else {
+        if (requestedRoles == null || requestedRoles.isEmpty()) {
             return true;
         }
+
+        String targetRoleName = requestedRoles.getFirst();
+        User target = userRepository.findByIdWithRoles(userId)
+                .orElseThrow(() -> new RuntimeException("Target user not found"));
+
+        if (hasRole(target, targetRoleName)) {
+            return true;
+        }
+
+        if (!isAdmin(principal) && !isSuperAdmin(principal)) {
+            return false;
+        }
+
+
+        if (isTransitionAllowed(principal, target, targetRoleName)) {
+            changeRole(target, targetRoleName);
+            return true;
+        }
+
+        return false;
+    }
+
+    private boolean isTransitionAllowed(AuthenticatedUser principal, User target, String newRole) {
+        boolean isSelf = Objects.equals(principal.getUserId(), target.getId());
+
+        return switch (newRole.toUpperCase()) {
+            case ROLE_USER_STRING ->
+                // Allow demotion to USER only if target is currently ADMIN
+                // AND (Actor is SuperAdmin OR Actor is demoting themselves)
+                    isAdmin(target) && (isSuperAdmin(principal) || isSelf);
+
+            case ROLE_ADMIN_STRING ->
+                // Allow promotion to ADMIN if target is currently USER
+                // OR if the actor is an Admin/SuperAdmin modifying themselves
+                    isUser(target) || isSelf;
+
+            case ROLE_SUPER_ADMIN_STRING ->
+                // Only SuperAdmins can grant SuperAdmin status
+                    isSuperAdmin(principal);
+
+            default -> false;
+        };
     }
 
     private void changeRole(User target, String role) {

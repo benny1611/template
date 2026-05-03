@@ -7,16 +7,15 @@ import static org.mockito.Mockito.*;
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
 import java.util.*;
+import java.util.stream.Collectors;
 
 
 import com.benny1611.easyevent.auth.AuthenticatedUser;
 import com.benny1611.easyevent.dao.*;
-import com.benny1611.easyevent.dto.ChangeUserRequest;
-import com.benny1611.easyevent.dto.CreateUserRequest;
-import com.benny1611.easyevent.dto.ListUserResponse;
-import com.benny1611.easyevent.dto.UserDTO;
+import com.benny1611.easyevent.dto.*;
 import com.benny1611.easyevent.entity.Role;
 import com.benny1611.easyevent.entity.User;
+import com.benny1611.easyevent.entity.UserBanLog;
 import com.benny1611.easyevent.entity.UserState;
 import com.benny1611.easyevent.exception.AccountSoftDeletedException;
 import com.benny1611.easyevent.exception.RoleNotFoundException;
@@ -881,6 +880,7 @@ class UserServiceTest {
 
         UserState bannedState = new UserState();
         bannedState.setName("BANNED");
+        bannedState.setId((short)3);
         when(userStateRepository.findByName("BANNED")).thenReturn(Optional.of(bannedState));
 
         // Mocking the ID fetch
@@ -890,7 +890,7 @@ class UserServiceTest {
 
         // Mocking the User entity retrieval
         User user1 = createMockUser(1L, "Alice", "ACTIVE");
-        User user2 = createMockUser(2L, "Bob", "INACTIVE");
+        User user2 = createMockUser(2L, "Bob", "BANNED");
         when(userRepository.findAllByIdWithRolesAndState(userIds)).thenReturn(Arrays.asList(user1, user2));
         // Wait, the repository returns actual User objects:
         when(userRepository.findAllByIdWithRolesAndState(userIds)).thenReturn(Arrays.asList(user1, user2));
@@ -941,6 +941,7 @@ class UserServiceTest {
 
         UserState state = new UserState();
         state.setName(stateName);
+        state.setId((short) 1);
         user.setState(state);
 
         Role role = new Role();
@@ -948,5 +949,189 @@ class UserServiceTest {
         user.setRoles(Collections.singleton(role));
 
         return user;
+    }
+
+    private AuthenticatedUser createPrincipal(Long id, String... roles) {
+        List<SimpleGrantedAuthority> authorities = Arrays.stream(roles)
+                .map(SimpleGrantedAuthority::new)
+                .collect(Collectors.toList());
+        return new AuthenticatedUser(id, "actor@test.com", (List) authorities);
+    }
+
+    private User createUserEntity(Long id, String roleName) {
+        User user = new User();
+        user.setId(id);
+        user.setEmail("target@test.com");
+
+        Role role = new Role();
+        role.setName(roleName);
+        user.setRoles(Set.of(role));
+        return user;
+    }
+
+    // --- Ban Tests ---
+
+    @Test
+    void banUserById_SuperAdminBanningAdmin_Success() {
+        // Arrange
+        AuthenticatedUser principal = createPrincipal(1L, "ROLE_SUPER_ADMIN");
+        User target = createUserEntity(2L, "ROLE_ADMIN");
+        User actor = createUserEntity(1L, "ROLE_SUPER_ADMIN");
+
+        when(userRepository.findByIdWithRoles(2L)).thenReturn(Optional.of(target));
+        when(userRepository.findByIdWithRoles(1L)).thenReturn(Optional.of(actor));
+
+        // Act
+        boolean result = userService.banUserById(principal, 2L, new BanRequest("Rule break"));
+
+        // Assert
+        assertTrue(result, "Super Admin should bypass role checks");
+        verify(userBanLogRepository).save(any());
+    }
+
+    @Test
+    void banUserById_AdminBanningUser_Success() {
+        // Arrange
+        AuthenticatedUser principal = createPrincipal(1L, "ROLE_ADMIN");
+        User target = createUserEntity(2L, "ROLE_USER"); // Admin can modify User
+        User actor = createUserEntity(1L, "ROLE_ADMIN");
+
+        when(userRepository.findByIdWithRoles(2L)).thenReturn(Optional.of(target));
+        when(userRepository.findByIdWithRoles(1L)).thenReturn(Optional.of(actor));
+
+        // Act
+        boolean result = userService.banUserById(principal, 2L, new BanRequest("Spam"));
+
+        // Assert
+        assertTrue(result);
+        verify(mailService).sendBanMail(eq(target), anyString());
+    }
+
+    @Test
+    void banUserById_AdminBanningAnotherAdmin_ReturnsFalse() {
+        // Arrange
+        AuthenticatedUser principal = createPrincipal(1L, "ROLE_ADMIN");
+        User target = createUserEntity(2L, "ROLE_ADMIN"); // Admin cannot modify Admin
+
+        when(userRepository.findByIdWithRoles(2L)).thenReturn(Optional.of(target));
+
+        // Act
+        boolean result = userService.banUserById(principal, 2L, new BanRequest("Power struggle"));
+
+        // Assert
+        assertFalse(result, "Admin should not be able to ban another Admin");
+        verify(userBanLogRepository, never()).save(any());
+    }
+
+    @Test
+    void banUserById_SelfBan_ReturnsFalse() {
+        // Arrange
+        AuthenticatedUser principal = createPrincipal(1L, "ROLE_SUPER_ADMIN");
+        User target = createUserEntity(1L, "ROLE_SUPER_ADMIN");
+
+        when(userRepository.findByIdWithRoles(1L)).thenReturn(Optional.of(target));
+
+        // Act
+        boolean result = userService.banUserById(principal, 1L, new BanRequest("Self-harm"));
+
+        // Assert
+        assertFalse(result, "Logic explicitly prevents self-banning regardless of roles");
+    }
+
+    // --- Unban Tests ---
+
+    @Test
+    void unbanUserById_AdminUnbanningUser_Success() {
+        // Arrange
+        Long adminId = 1L;
+        Long targetId = 2L;
+        AuthenticatedUser principal = createPrincipal(adminId, "ROLE_ADMIN");
+        User actor = createUserEntity(adminId, "ROLE_ADMIN");
+        User target = createUserEntity(targetId, "ROLE_USER");
+
+        when(userRepository.findByIdWithRoles(targetId)).thenReturn(Optional.of(target));
+        when(userRepository.findByIdWithRoles(adminId)).thenReturn(Optional.of(actor));
+
+        // Act
+        boolean result = userService.unbanUserById(principal, targetId);
+
+        // Assert
+        assertTrue(result, "Admin should be able to unban a different user");
+        verify(userBanLogRepository).save(any(UserBanLog.class));
+        verify(mailService).sendUnbanMail(target);
+    }
+
+    @Test
+    void unbanUserById_SuperAdminUnbanningAdmin_Success() {
+        // Arrange
+        Long superId = 1L;
+        Long targetId = 2L;
+        AuthenticatedUser principal = createPrincipal(superId, "ROLE_SUPER_ADMIN");
+        User actor = createUserEntity(superId, "ROLE_SUPER_ADMIN");
+        User target = createUserEntity(targetId, "ROLE_ADMIN");
+
+        when(userRepository.findByIdWithRoles(targetId)).thenReturn(Optional.of(target));
+        when(userRepository.findByIdWithRoles(superId)).thenReturn(Optional.of(actor));
+
+        // Act
+        boolean result = userService.unbanUserById(principal, targetId);
+
+        // Assert
+        assertTrue(result, "Super Admin should be able to unban an Admin");
+    }
+
+    @Test
+    void unbanUserById_AdminAttemptingSelfUnban_ReturnsFalse() {
+        // Arrange
+        Long adminId = 1L;
+        // Principal ID matches Target ID
+        AuthenticatedUser principal = createPrincipal(adminId, "ROLE_ADMIN");
+        User target = createUserEntity(adminId, "ROLE_ADMIN");
+
+        when(userRepository.findByIdWithRoles(adminId)).thenReturn(Optional.of(target));
+
+        // Act
+        boolean result = userService.unbanUserById(principal, adminId);
+
+        // Assert
+        assertFalse(result, "Admins should not be able to unban themselves");
+        verify(userBanLogRepository, never()).save(any());
+    }
+
+    @Test
+    void unbanUserById_RegularUserAttemptingUnban_ReturnsFalse() {
+        // Arrange
+        Long userId = 1L;
+        Long targetId = 2L;
+        // Principal is just a ROLE_USER
+        AuthenticatedUser principal = createPrincipal(userId, "ROLE_USER");
+        User target = createUserEntity(targetId, "ROLE_USER");
+
+        when(userRepository.findByIdWithRoles(targetId)).thenReturn(Optional.of(target));
+
+        // Act
+        boolean result = userService.unbanUserById(principal, targetId);
+
+        // Assert
+        assertFalse(result, "Regular users have no unban privileges in the new logic");
+        verify(userBanLogRepository, never()).save(any());
+    }
+
+    @Test
+    void unbanUserById_ActorNotFoundInDb_ThrowsException() {
+        // Arrange
+        Long adminId = 1L;
+        Long targetId = 2L;
+        AuthenticatedUser principal = createPrincipal(adminId, "ROLE_ADMIN");
+        User target = createUserEntity(targetId, "ROLE_USER");
+
+        when(userRepository.findByIdWithRoles(targetId)).thenReturn(Optional.of(target));
+        // Target is found, but the admin's own record is missing
+        when(userRepository.findByIdWithRoles(adminId)).thenReturn(Optional.empty());
+
+        // Act & Assert
+        assertThrows(RuntimeException.class, () -> {
+            userService.unbanUserById(principal, targetId);
+        }, "Should throw 'User not found' if actor is missing from DB");
     }
 }
