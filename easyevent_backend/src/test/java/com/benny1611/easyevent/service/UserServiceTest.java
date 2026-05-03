@@ -965,7 +965,7 @@ class UserServiceTest {
 
         Role role = new Role();
         role.setName(roleName);
-        user.setRoles(Set.of(role));
+        user.setRoles(new HashSet<>(Collections.singleton(role)));
         return user;
     }
 
@@ -1133,5 +1133,116 @@ class UserServiceTest {
         assertThrows(RuntimeException.class, () -> {
             userService.unbanUserById(principal, targetId);
         }, "Should throw 'User not found' if actor is missing from DB");
+    }
+
+    @Test
+    void changeUserRoles_ValidTransition_CallsChangeRoleSideEffects() {
+        // Arrange
+        Long adminId = 1L;
+        Long userId = 2L;
+        AuthenticatedUser principal = createPrincipal(adminId, "ROLE_ADMIN");
+
+        // Target is a USER, we want to make them an ADMIN
+        User target = createUserEntity(userId, "ROLE_USER");
+
+        Role adminRoleEntity = new Role();
+        adminRoleEntity.setName("ROLE_ADMIN");
+
+        when(userRepository.findByIdWithRoles(userId)).thenReturn(Optional.of(target));
+        // We need this because changeRole(target, role) looks it up again
+        when(roleRepository.findByName("ROLE_ADMIN")).thenReturn(Optional.of(adminRoleEntity));
+
+        // Act
+        boolean result = userService.changeUserRoles(principal, userId, new ChangeRolesRequest(List.of("ROLE_ADMIN")));
+
+        // Assert
+        assertTrue(result);
+
+        // Verify changeRole logic:
+        // 1. Target roles were cleared and updated
+        assertEquals(1, target.getRoles().size());
+        assertTrue(target.getRoles().stream().anyMatch(r -> r.getName().equalsIgnoreCase("ROLE_ADMIN")));
+
+        // 2. Repository save was called
+        verify(userRepository).save(target);
+
+        // 3. Email was sent
+        verify(mailService).sendRoleChangeMail(eq(target), eq("ROLE_USER"), eq("ROLE_ADMIN"));
+    }
+
+    @Test
+    void changeUserRoles_ForbiddenTransition_DoesNotCallChangeRole() {
+        // Arrange
+        AuthenticatedUser principal = createPrincipal(1L, "ROLE_ADMIN");
+        User target = createUserEntity(2L, "ROLE_ADMIN"); // Target is already ADMIN
+
+        // Admin trying to promote another Admin to SuperAdmin (Forbidden)
+        when(userRepository.findByIdWithRoles(2L)).thenReturn(Optional.of(target));
+
+        // Act
+        boolean result = userService.changeUserRoles(principal, 2L, new ChangeRolesRequest(List.of("ROLE_SUPER_ADMIN")));
+
+        // Assert
+        assertFalse(result);
+        verify(userRepository, never()).save(any());
+        verify(mailService, never()).sendRoleChangeMail(any(), any(), any());
+    }
+
+    @Test
+    void changeUserRoles_NoOp_ReturnsTrueWithoutSaving() {
+        // Arrange
+        AuthenticatedUser principal = createPrincipal(1L, "ROLE_ADMIN");
+        User target = createUserEntity(2L, "ROLE_USER");
+
+        // Target already is ROLE_USER, and request is ROLE_USER
+        when(userRepository.findByIdWithRoles(2L)).thenReturn(Optional.of(target));
+
+        // Act
+        boolean result = userService.changeUserRoles(principal, 2L, new ChangeRolesRequest(List.of("ROLE_USER")));
+
+        // Assert
+        assertTrue(result);
+        // Should NOT call save or email because no change happened
+        verify(userRepository, never()).save(any());
+        verify(mailService, never()).sendRoleChangeMail(any(), any(), any());
+    }
+
+    @Test
+    void changeUserRoles_SuperAdminDemotingAdminToUser_Success() {
+        // --- 1. Arrange ---
+        Long superAdminId = 1L;
+        Long targetAdminId = 2L;
+
+        // Actor is a Super Admin
+        AuthenticatedUser principal = createPrincipal(superAdminId, "ROLE_SUPER_ADMIN");
+
+        // Target is currently an Admin
+        User targetUser = createUserEntity(targetAdminId, "ROLE_ADMIN");
+
+        // Role objects for the transition
+        Role userRoleEntity = new Role();
+        userRoleEntity.setName("ROLE_USER");
+
+        // Mocking behavior
+        when(userRepository.findByIdWithRoles(targetAdminId)).thenReturn(Optional.of(targetUser));
+        when(roleRepository.findByName("ROLE_USER")).thenReturn(Optional.of(userRoleEntity));
+
+        // --- 2. Act ---
+        boolean result = userService.changeUserRoles(
+                principal,
+                targetAdminId,
+                new ChangeRolesRequest(List.of("ROLE_USER"))
+        );
+
+        // --- 3. Assert ---
+        assertTrue(result, "Super Admin should be allowed to demote an Admin to User");
+
+        // Verify target now has the USER role
+        assertTrue(targetUser.getRoles().stream()
+                .anyMatch(r -> r.getName().equals("ROLE_USER")));
+
+        // Verify side effects
+        verify(userRepository).save(targetUser);
+        verify(mailService).sendRoleChangeMail(targetUser, "ROLE_ADMIN", "ROLE_USER");
     }
 }
