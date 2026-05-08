@@ -1,1 +1,0 @@
-ALTER TABLE user_oauth_accounts ADD COLUMN deleted_at TIMESTAMPTZ DEFAULT NULL;
