@@ -565,11 +565,11 @@ public class UserService {
         String reason = deletionReason.getReason();
 
         if (selfDelete) {
-            softDeleteUser(target.getId(), principal.getUserId(), false, null);
+            softDeleteUser(target, principal.getUserId(), false, "self-deleted");
             return true;
         } else if (isSuperAdmin && !targetIsSuperAdmin) {
             if (reason != null && !reason.isBlank()) {
-                softDeleteUser(target.getId(), principal.getUserId(), true, reason);
+                softDeleteUser(target, principal.getUserId(), true, reason);
                 return true;
             }  else {
                 throw new IllegalArgumentException("Reason cannot be null or empty");
@@ -579,9 +579,7 @@ public class UserService {
         }
     }
 
-    private void softDeleteUser(Long targetId, Long actorId, boolean isAdmin, String reason) {
-        User user = userRepository.findById(targetId)
-                .orElseThrow(() -> new EntityNotFoundException("User not found"));
+    private void softDeleteUser(User user, Long actorId, boolean isAdmin, String reason) {
 
         // 1. Mark as deleted
         user.setDeletedAt(OffsetDateTime.now());
@@ -590,7 +588,7 @@ public class UserService {
 
         // 2. Audit the action
         UserDeletionLog log = new UserDeletionLog();
-        log.setTargetUserId(targetId);
+        log.setTargetUserId(user.getId());
         log.setActorId(actorId);
         log.setDeletionType(isAdmin ? "ADMIN" : "SELF");
         log.setReason(reason);

@@ -13,10 +13,7 @@ import java.util.stream.Collectors;
 import com.benny1611.easyevent.auth.AuthenticatedUser;
 import com.benny1611.easyevent.dao.*;
 import com.benny1611.easyevent.dto.*;
-import com.benny1611.easyevent.entity.Role;
-import com.benny1611.easyevent.entity.User;
-import com.benny1611.easyevent.entity.UserBanLog;
-import com.benny1611.easyevent.entity.UserState;
+import com.benny1611.easyevent.entity.*;
 import com.benny1611.easyevent.exception.AccountSoftDeletedException;
 import com.benny1611.easyevent.exception.RoleNotFoundException;
 import com.benny1611.easyevent.util.JwtUtils;
@@ -27,6 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
@@ -1244,5 +1242,121 @@ class UserServiceTest {
         // Verify side effects
         verify(userRepository).save(targetUser);
         verify(mailService).sendRoleChangeMail(targetUser, "ROLE_ADMIN", "ROLE_USER");
+    }
+
+
+    @Test
+    void deleteUser_SelfDeletion_Success() {
+        // --- Arrange ---
+        Long userId = 10L;
+        AuthenticatedUser principal = createPrincipal(userId, "ROLE_USER");
+        User target = createUserEntity(userId, "ROLE_USER");
+        DeletionReason reasonObj = new DeletionReason("I want to leave");
+
+        mockInactiveState();
+
+        when(userRepository.findByIdWithRoles(userId)).thenReturn(Optional.of(target));
+
+        // --- Act ---
+        boolean result = userService.deleteUser(principal, userId, reasonObj);
+
+        // --- Assert ---
+        assertTrue(result);
+        assertNotNull(target.getDeletedAt());
+
+        // Verify Log entry
+        ArgumentCaptor<UserDeletionLog> logCaptor = ArgumentCaptor.forClass(UserDeletionLog.class);
+        verify(logRepository).save(logCaptor.capture());
+
+        UserDeletionLog savedLog = logCaptor.getValue();
+        assertEquals("SELF", savedLog.getDeletionType());
+        assertEquals(userId, savedLog.getTargetUserId());
+        assertEquals("self-deleted", savedLog.getReason());
+
+        verify(mailService).sendDeletionMail(eq(target), eq(false), eq("self-deleted"));
+    }
+
+    @Test
+    void deleteUser_SuperAdminDeletingUser_Success() {
+        // --- Arrange ---
+        Long adminId = 1L;
+        Long targetId = 2L;
+        AuthenticatedUser principal = createPrincipal(adminId, "ROLE_SUPER_ADMIN");
+        User target = createUserEntity(targetId, "ROLE_USER");
+        DeletionReason reasonObj = new DeletionReason("Violated terms");
+
+        mockInactiveState();
+
+        when(userRepository.findByIdWithRoles(targetId)).thenReturn(Optional.of(target));
+
+        // --- Act ---
+        boolean result = userService.deleteUser(principal, targetId, reasonObj);
+
+        // --- Assert ---
+        assertTrue(result);
+
+        ArgumentCaptor<UserDeletionLog> logCaptor = ArgumentCaptor.forClass(UserDeletionLog.class);
+        verify(logRepository).save(logCaptor.capture());
+
+        UserDeletionLog savedLog = logCaptor.getValue();
+        assertEquals("ADMIN", savedLog.getDeletionType());
+        assertEquals("Violated terms", savedLog.getReason());
+
+        verify(mailService).sendDeletionMail(eq(target), eq(true), eq("Violated terms"));
+    }
+
+    @Test
+    void deleteUser_SuperAdminDeletingAnotherSuperAdmin_ReturnsFalse() {
+        // --- Arrange ---
+        AuthenticatedUser principal = createPrincipal(1L, "ROLE_SUPER_ADMIN");
+        User target = createUserEntity(2L, "ROLE_SUPER_ADMIN");
+
+        when(userRepository.findByIdWithRoles(2L)).thenReturn(Optional.of(target));
+
+        // --- Act ---
+        boolean result = userService.deleteUser(principal, 2L, new DeletionReason("Reason"));
+
+        // --- Assert ---
+        assertFalse(result, "Super Admins should not be able to delete other Super Admins");
+        verify(logRepository, never()).save(any());
+    }
+
+    @Test
+    void deleteUser_SuperAdminMissingReason_ThrowsException() {
+        // --- Arrange ---
+        AuthenticatedUser principal = createPrincipal(1L, "ROLE_SUPER_ADMIN");
+        User target = createUserEntity(2L, "ROLE_USER");
+        DeletionReason emptyReason = new DeletionReason("");
+
+        when(userRepository.findByIdWithRoles(2L)).thenReturn(Optional.of(target));
+
+        // --- Act & Assert ---
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+                userService.deleteUser(principal, 2L, emptyReason)
+        );
+        assertEquals("Reason cannot be null or empty", ex.getMessage());
+    }
+
+    @Test
+    void deleteUser_RegularAdminTryingToDeleteUser_ReturnsFalse() {
+        // --- Arrange ---
+        // Principal is an ADMIN, but NOT a SUPER_ADMIN
+        AuthenticatedUser principal = createPrincipal(1L, "ROLE_ADMIN");
+        User target = createUserEntity(2L, "ROLE_USER");
+
+        when(userRepository.findByIdWithRoles(2L)).thenReturn(Optional.of(target));
+
+        // --- Act ---
+        boolean result = userService.deleteUser(principal, 2L, new DeletionReason("Reason"));
+
+        // --- Assert ---
+        assertFalse(result, "Only Super Admins (or the user themselves) can delete accounts");
+        verify(logRepository, never()).save(any());
+    }
+
+    private void mockInactiveState() {
+        UserState inactiveState = new UserState();
+        inactiveState.setName("INACTIVE");
+        when(userStateRepository.findByName("INACTIVE")).thenReturn(Optional.of(inactiveState));
     }
 }
