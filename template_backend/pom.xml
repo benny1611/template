@@ -10,10 +10,10 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.benny1611</groupId>
-	<artifactId>easyevent</artifactId>
+	<artifactId>template</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>easyevent</name>
-	<description>Event planning app</description>
+	<name>template</name>
+	<description>SpringBoot 4 template</description>
 	<url/>
 	<licenses>
 		<license/>
