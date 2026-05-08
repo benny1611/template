@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -1358,5 +1359,97 @@ class UserServiceTest {
         UserState inactiveState = new UserState();
         inactiveState.setName("INACTIVE");
         when(userStateRepository.findByName("INACTIVE")).thenReturn(Optional.of(inactiveState));
+    }
+
+
+    @Test
+    void recoverAccount_SelfRecovery_Success() {
+        // --- Arrange ---
+        String email = "deleted@example.com";
+        User softDeletedUser = new User();
+        softDeletedUser.setId(50L);
+        softDeletedUser.setEmail(email);
+        softDeletedUser.setDeletedAt(OffsetDateTime.now()); // Currently deleted
+
+        mockActiveState();
+
+        when(userRepository.findSoftDeletedByEmail(email))
+                .thenReturn(Optional.of(softDeletedUser));
+
+        // --- Act ---
+        // Principal is null (e.g., recovery via email link without being logged in)
+        userService.recoverAccount(email, null);
+
+        // --- Assert ---
+        assertNull(softDeletedUser.getDeletedAt(), "deletedAt should be cleared");
+        verify(userRepository).save(softDeletedUser);
+
+        // Verify Log: Target ID should match RecoveredBy ID
+        ArgumentCaptor<UserRecoveryLog> logCaptor = ArgumentCaptor.forClass(UserRecoveryLog.class);
+        verify(recoveryLogRepository).save(logCaptor.capture());
+
+        UserRecoveryLog savedLog = logCaptor.getValue();
+        assertEquals(50L, savedLog.getTargetUserId());
+        assertEquals(50L, savedLog.getRecoveredById(), "Should log self-id when principal is null");
+
+        // Verify Mail
+        verify(mailService).sendRecoveryMail(softDeletedUser, false);
+    }
+
+    @Test
+    void recoverAccount_AdminRecovery_Success() {
+        // --- Arrange ---
+        String email = "user@example.com";
+        Long adminId = 1L;
+        Long targetId = 99L;
+
+        AuthenticatedUser adminPrincipal = createPrincipal(adminId, "ROLE_ADMIN");
+        User targetUser = new User();
+        targetUser.setId(targetId);
+        targetUser.setDeletedAt(OffsetDateTime.now());
+
+        mockActiveState();
+
+        when(userRepository.findSoftDeletedByEmail(email))
+                .thenReturn(Optional.of(targetUser));
+
+        // --- Act ---
+        userService.recoverAccount(email, adminPrincipal);
+
+        // --- Assert ---
+        assertNull(targetUser.getDeletedAt());
+
+        // Verify Log: RecoveredBy should be the Admin's ID
+        ArgumentCaptor<UserRecoveryLog> logCaptor = ArgumentCaptor.forClass(UserRecoveryLog.class);
+        verify(recoveryLogRepository).save(logCaptor.capture());
+
+        UserRecoveryLog savedLog = logCaptor.getValue();
+        assertEquals(targetId, savedLog.getTargetUserId());
+        assertEquals(adminId, savedLog.getRecoveredById());
+
+        // Verify Mail: byAdmin should be true
+        verify(mailService).sendRecoveryMail(targetUser, true);
+    }
+
+    @Test
+    void recoverAccount_NotFound_ThrowsException() {
+        // --- Arrange ---
+        String email = "nonexistent@example.com";
+        when(userRepository.findSoftDeletedByEmail(email)).thenReturn(Optional.empty());
+
+        // --- Act & Assert ---
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+                userService.recoverAccount(email, null)
+        );
+        assertEquals("Account not found or already purged", ex.getMessage());
+
+        verify(userRepository, never()).save(any());
+        verify(recoveryLogRepository, never()).save(any());
+    }
+
+    private void mockActiveState() {
+        UserState activeState = new UserState();
+        activeState.setName("ACTIVE");
+        when(userStateRepository.findByName("ACTIVE")).thenReturn(Optional.of(activeState));
     }
 }
