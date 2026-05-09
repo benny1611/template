@@ -107,4 +107,20 @@ class PasswordResetControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    @DisplayName("POST /confirm - Failure (Weak Password)")
+    void confirmReset_WeakPassword_Returns400() throws Exception {
+        // Arrange: Password missing numbers/special chars
+        PasswordResetConfirmRequest request = new PasswordResetConfirmRequest();
+        request.setTokenId(UUID.randomUUID());
+        request.setSecret("secret");
+        request.setNewPassword("weak");
+
+        // Act & Assert
+        mockMvc.perform(post("/api/auth/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
 }
