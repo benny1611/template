@@ -8,7 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.time.OffsetDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -71,7 +71,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     // For the cleanup task
     @Query(value = "SELECT * FROM users WHERE deleted_at <= :threshold", nativeQuery = true)
-    List<User> findExpiredSoftDeletedUsers(@Param("threshold") OffsetDateTime threshold);
+    List<User> findExpiredSoftDeletedUsers(@Param("threshold") Instant threshold);
 
     @Query(value = "SELECT * FROM users WHERE email = :email AND deleted_at IS NULL", nativeQuery = true)
     Optional<User> findActiveByEmail(String email);

@@ -7,10 +7,12 @@ import com.benny1611.template.entity.User;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.time.OffsetDateTime;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 @Component
@@ -21,27 +23,30 @@ public class CleanupScheduler {
     private final DeletionLogRepository logRepository;
     private final UserRecoveryLogRepository recoveryLogRepository;
 
-    // Every night at 2:00 AM
+    @Value("${app.cleanup.users.purge-days:30}")
+    private long userPurgeDays;
+
+    @Value("${app.cleanup.logs.purge-days:180}")
+    private long logPurgeDays;
+
     @Scheduled(cron = "0 0 2 * * *")
     @Transactional
     public void runCleanups() {
-        // 1. Hard-delete users after 30 days
-        OffsetDateTime userThreshold = OffsetDateTime.now().minusDays(30);
+        // 1. Hard-delete users
+        Instant userThreshold = Instant.now().minus(userPurgeDays, ChronoUnit.DAYS);
         List<User> expiredUsers = userRepository.findExpiredSoftDeletedUsers(userThreshold);
+
         if (!expiredUsers.isEmpty()) {
             userRepository.deleteAll(expiredUsers);
             log.info("Purged {} expired user accounts.", expiredUsers.size());
         }
 
-        // 2. Clear audit logs after 6 months (~180 days)
-        OffsetDateTime logThreshold = OffsetDateTime.now().minusDays(180); // 6 months
+        // 2. Clear audit logs
+        Instant logThreshold = Instant.now().minus(logPurgeDays, ChronoUnit.DAYS);
 
-        // Purge Deletion Logs
         logRepository.purgeOldLogs(logThreshold);
-
-        // Purge Recovery Logs
         recoveryLogRepository.purgeOldLogs(logThreshold);
 
-        log.info("Purged all lifecycle logs older than 6 months.");
+        log.info("Purged all lifecycle logs older than {} days.", logPurgeDays);
     }
 }

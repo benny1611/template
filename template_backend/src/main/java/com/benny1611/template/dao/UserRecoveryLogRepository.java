@@ -6,10 +6,10 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import java.time.OffsetDateTime;
+import java.time.Instant;
 
 public interface UserRecoveryLogRepository extends JpaRepository<UserRecoveryLog, Long> {
     @Modifying
     @Query("DELETE FROM UserRecoveryLog l WHERE l.occurredAt <= :threshold")
-    void purgeOldLogs(@Param("threshold") OffsetDateTime threshold);
+    void purgeOldLogs(@Param("threshold") Instant threshold);
 }
