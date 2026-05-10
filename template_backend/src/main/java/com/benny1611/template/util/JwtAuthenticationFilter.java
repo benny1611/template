@@ -1,8 +1,6 @@
 package com.benny1611.template.util;
 
 import com.benny1611.template.auth.AuthenticatedUser;
-import com.benny1611.template.dao.RoleRepository;
-import com.benny1611.template.entity.Role;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,11 +19,9 @@ import java.util.List;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtils jwtUtils;
-    private final RoleRepository roleRepository;
 
-    public JwtAuthenticationFilter(JwtUtils jwtUtils, RoleRepository roleRepository) {
+    public JwtAuthenticationFilter(JwtUtils jwtUtils) {
         this.jwtUtils = jwtUtils;
-        this.roleRepository = roleRepository;
     }
 
     @Override
@@ -38,17 +34,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
 
-        String hearder = request.getHeader("Authorization");
+        String header = request.getHeader("Authorization"); // Fixed the "hearder" typo too!
 
-        if (hearder != null && hearder.startsWith("Bearer ")) {
-            String token = hearder.substring(7);
+        if (header != null && header.startsWith("Bearer ")) {
+            String token = header.substring(7);
 
             if (jwtUtils.validateToken(token)) {
                 Long userId = jwtUtils.getUserIdFromToken(token);
                 String email = jwtUtils.getEmailFromToken(token);
 
-                List<Role> allRoles = roleRepository.findAll();
-                List<GrantedAuthority> authorities = jwtUtils.getAuthorities(token, allRoles);
+                // No more roleRepository.findAll()!
+                List<GrantedAuthority> authorities = jwtUtils.getAuthorities(token);
 
                 AuthenticatedUser principal = new AuthenticatedUser(userId, email, authorities);
                 Authentication auth = new UsernamePasswordAuthenticationToken(principal, null, authorities);
@@ -57,6 +53,5 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
-
     }
 }

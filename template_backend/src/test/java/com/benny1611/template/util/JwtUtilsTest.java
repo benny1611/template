@@ -79,11 +79,9 @@ class JwtUtilsTest {
         roleAdmin.setName("ROLE_ADMIN");
 
         // The user has ROLE_USER in the token.
-        // We provide a list that includes ROLE_USER and ROLE_ADMIN.
-        List<Role> allPossibleRoles = List.of(roleUser, roleAdmin);
 
         // Act
-        List<GrantedAuthority> authorities = jwtUtils.getAuthorities(token, allPossibleRoles);
+        List<GrantedAuthority> authorities = jwtUtils.getAuthorities(token);
 
         // Assert
         assertEquals(1, authorities.size());

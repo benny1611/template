@@ -14,7 +14,6 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -86,26 +85,23 @@ public class JwtUtils {
         return email != null ? email.toString() : null;
     }
 
-    public List<GrantedAuthority> getAuthorities(String token, List<Role> allRoles) {
-        Object rolesObj = Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload().get("roles");
-        List<String> rolesStringList = List.of();
-        if (rolesObj != null) {
-            try {
-                rolesStringList = (List<String>) rolesObj;
-            } catch (ClassCastException e) {
-                LOG.error("Could not cast authorities to list: {}", rolesObj);
-                return List.of();
-            }
-        }
-        List<GrantedAuthority> roles = new ArrayList<>();
-        List<String> allRolesString = allRoles.stream().map(Role::getName).toList();
+    public List<GrantedAuthority> getAuthorities(String token) {
+        Object rolesObj = Jwts.parser()
+                .verifyWith(key)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload()
+                .get("roles");
 
-        for (String role: rolesStringList) {
-            if (allRolesString.contains(role)) {
-                roles.add(new SimpleGrantedAuthority(role));
-            }
+        if (rolesObj instanceof List<?> rolesList) {
+            return rolesList.stream()
+                    .filter(String.class::isInstance)
+                    .map(String.class::cast)
+                    .map(SimpleGrantedAuthority::new) // No DB lookup needed!
+                    .map(GrantedAuthority.class::cast)
+                    .toList();
         }
 
-        return roles;
+        return List.of();
     }
 }
