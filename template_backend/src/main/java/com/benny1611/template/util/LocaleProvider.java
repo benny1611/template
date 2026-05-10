@@ -1,7 +1,7 @@
 package com.benny1611.template.util;
 
 import org.springframework.core.io.Resource;
-import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
+import org.springframework.core.io.support.ResourcePatternResolver;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -13,24 +13,20 @@ import java.util.Set;
 @Component
 public class LocaleProvider {
 
-
     private final Set<Locale> availableLocales;
 
-    public LocaleProvider() throws IOException {
-        this.availableLocales = loadLocales();
+    // Injecting the resolver via constructor
+    public LocaleProvider(ResourcePatternResolver resolver) throws IOException {
+        this.availableLocales = loadLocales(resolver);
     }
 
-    private Set<Locale> loadLocales() throws IOException {
+    private Set<Locale> loadLocales(ResourcePatternResolver resolver) throws IOException {
         Set<Locale> locales = new HashSet<>();
 
-        PathMatchingResourcePatternResolver resolver =
-                new PathMatchingResourcePatternResolver();
-
-        Resource[] resources =
-                resolver.getResources("classpath:i18n/mail_*.properties");
+        Resource[] resources = resolver.getResources("classpath:i18n/mail_*.properties");
 
         for (Resource resource : resources) {
-            String filename = resource.getFilename(); // mail_en.properties
+            String filename = resource.getFilename();
             if (filename == null) continue;
 
             String tag = filename
@@ -41,8 +37,7 @@ public class LocaleProvider {
             locales.add(Locale.forLanguageTag(tag));
         }
 
-        locales.add(Locale.ENGLISH);
-
+        locales.add(Locale.ENGLISH); // Always support English
         return Collections.unmodifiableSet(locales);
     }
 
