@@ -94,7 +94,7 @@ public class JwtUtils {
                 rolesStringList = (List<String>) rolesObj;
             } catch (ClassCastException e) {
                 LOG.error("Could not cast authorities to list: {}", rolesObj);
-                return null;
+                return List.of();
             }
         }
         List<GrantedAuthority> roles = new ArrayList<>();
