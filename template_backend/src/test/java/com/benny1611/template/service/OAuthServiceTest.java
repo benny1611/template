@@ -16,7 +16,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.time.OffsetDateTime;
+import java.time.Instant;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -71,7 +71,7 @@ class OAuthServiceTest {
         String code = "valid-code";
         Long userId = 1L;
         User user = new User();
-        user.setDeletedAt(OffsetDateTime.now()); // Mark as deleted
+        user.setDeletedAt(Instant.now()); // Mark as deleted
 
         when(codeService.consume(code)).thenReturn(userId);
         when(entityManager.unwrap(Session.class)).thenReturn(session);

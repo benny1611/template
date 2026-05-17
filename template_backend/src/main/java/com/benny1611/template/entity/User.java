@@ -5,7 +5,7 @@ import lombok.Data;
 import org.hibernate.annotations.Filter;
 import org.hibernate.annotations.FilterDef;
 
-import java.time.OffsetDateTime;
+import java.time.Instant;
 import java.util.*;
 
 @Entity
@@ -35,7 +35,7 @@ public class User {
     private String profilePictureUrl;
 
     @Column(name = "last_login_at")
-    private OffsetDateTime lastLoginAt;
+    private Instant lastLoginAt;
 
     @Column(name = "failed_login_attempts", nullable = false)
     private int failedLoginAttempts = 0;
@@ -47,10 +47,10 @@ public class User {
     private UUID activationToken;
 
     @Column(name = "activation_sent_at")
-    private OffsetDateTime activationSentAt;
+    private Instant activationSentAt;
 
     @Column(name = "deleted_at")
-    private OffsetDateTime deletedAt;
+    private Instant deletedAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "state_id")

@@ -12,7 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.OffsetDateTime;
+import java.time.Instant;
 
 @Service
 public class OAuthService {
@@ -47,7 +47,7 @@ public class OAuthService {
             throw new AccountSoftDeletedException(user.getEmail());
         }
 
-        user.setLastLoginAt(OffsetDateTime.now());
+        user.setLastLoginAt(Instant.now());
         userRepository.save(user);
         return jwtUtils.generateToken(user);
     }

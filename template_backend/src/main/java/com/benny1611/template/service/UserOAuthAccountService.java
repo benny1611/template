@@ -11,7 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.OffsetDateTime;
+import java.time.Instant;
 import java.util.Optional;
 
 @Service
@@ -55,7 +55,7 @@ public class UserOAuthAccountService {
         account.setProvider(provider);
         account.setProviderUserId(providerUserId);
         account.setEmail(email);
-        account.setConnectedAt(OffsetDateTime.now());
+        account.setConnectedAt(Instant.now());
 
         userOAuthAccountRepository.save(account);
     }

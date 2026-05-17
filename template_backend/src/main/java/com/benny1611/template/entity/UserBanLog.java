@@ -6,7 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.OffsetDateTime;
+import java.time.Instant;
 
 @Entity
 @Table(name = "user_ban_log")
@@ -37,7 +37,7 @@ public class UserBanLog {
 
     @Column(name = "occurred_at", nullable = false, updatable = false)
     @Builder.Default
-    private OffsetDateTime occurredAt = OffsetDateTime.now();
+    private Instant occurredAt = Instant.now();
 
 
     public enum ActionType {

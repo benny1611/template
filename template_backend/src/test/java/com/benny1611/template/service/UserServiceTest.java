@@ -6,7 +6,7 @@ import static org.mockito.Mockito.*;
 
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
-import java.time.OffsetDateTime;
+import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -1369,7 +1369,7 @@ class UserServiceTest {
         User softDeletedUser = new User();
         softDeletedUser.setId(50L);
         softDeletedUser.setEmail(email);
-        softDeletedUser.setDeletedAt(OffsetDateTime.now()); // Currently deleted
+        softDeletedUser.setDeletedAt(Instant.now()); // Currently deleted
 
         mockActiveState();
 
@@ -1406,7 +1406,7 @@ class UserServiceTest {
         AuthenticatedUser adminPrincipal = createPrincipal(adminId, "ROLE_ADMIN");
         User targetUser = new User();
         targetUser.setId(targetId);
-        targetUser.setDeletedAt(OffsetDateTime.now());
+        targetUser.setDeletedAt(Instant.now());
 
         mockActiveState();
 

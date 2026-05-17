@@ -5,7 +5,7 @@ import lombok.Data;
 import jakarta.persistence.Id;
 import org.hibernate.annotations.CreationTimestamp;
 
-import java.time.OffsetDateTime;
+import java.time.Instant;
 
 @Entity
 @Table(name = "user_recovery_log")
@@ -23,5 +23,5 @@ public class UserRecoveryLog {
 
     @CreationTimestamp
     @Column(name = "occurred_at", updatable = false, nullable = false)
-    private OffsetDateTime occurredAt;
+    private Instant occurredAt;
 }

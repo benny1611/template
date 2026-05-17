@@ -3,7 +3,7 @@ package com.benny1611.template.entity;
 import jakarta.persistence.*;
 import lombok.Data;
 
-import java.time.OffsetDateTime;
+import java.time.Instant;
 
 @Entity
 @Table(name = "user_oauth_accounts",
@@ -33,5 +33,5 @@ public class UserOAuthAccount {
     private String email;
 
     @Column(name = "connected_at", nullable = false)
-    private OffsetDateTime connectedAt;
+    private Instant connectedAt;
 }

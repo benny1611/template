@@ -27,7 +27,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
-import java.time.OffsetDateTime;
+import java.time.Instant;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -111,7 +111,7 @@ public class UserService {
 
         UUID activationToken = UUID.randomUUID();
         user.setActivationToken(activationToken);
-        user.setActivationSentAt(OffsetDateTime.now());
+        user.setActivationSentAt(Instant.now());
 
         user = userRepository.save(user);
 
@@ -205,7 +205,7 @@ public class UserService {
             if (!user.getState().getName().equalsIgnoreCase("ACTIVE")) {
                 UUID token = UUID.randomUUID();
                 user.setActivationToken(token);
-                user.setActivationSentAt(OffsetDateTime.now());
+                user.setActivationSentAt(Instant.now());
                 userRepository.save(user);
                 mailService.sendActivationEmail(user);
             }
@@ -409,7 +409,7 @@ public class UserService {
 
                     UUID activationToken = UUID.randomUUID();
                     user.setActivationToken(activationToken);
-                    user.setActivationSentAt(OffsetDateTime.now());
+                    user.setActivationSentAt(Instant.now());
 
                     mailService.sendActivationEmail(user);
                 }
@@ -581,7 +581,7 @@ public class UserService {
     private void softDeleteUser(User user, Long actorId, boolean isAdmin, String reason) {
 
         // 1. Mark as deleted
-        user.setDeletedAt(OffsetDateTime.now());
+        user.setDeletedAt(Instant.now());
         setUserStateInactive(user);
         userRepository.save(user);
 

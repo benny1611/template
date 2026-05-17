@@ -2,7 +2,7 @@ package com.benny1611.template.dto;
 
 import lombok.Data;
 
-import java.time.OffsetDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Data
@@ -15,5 +15,5 @@ public class ListUserResponse {
     private boolean isBanned;
     private List<String> roles;
     private boolean softDeleted;
-    private OffsetDateTime deletedAt;
+    private Instant deletedAt;
 }
